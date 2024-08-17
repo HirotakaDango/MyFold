@@ -20,7 +20,7 @@ if (isset($_GET['delete_id'])) {
 
   if ($delete_stmt->execute()) {
     // Delete the image file from the server
-    $image_file = '/original/' . $delete_id; // Adjust path as needed
+    $image_file = 'original/' . $delete_id; // Adjust path as needed
     if (file_exists($image_file)) {
       unlink($image_file);
     }
@@ -33,21 +33,39 @@ if (isset($_GET['delete_id'])) {
   }
 }
 
+// Handle search query
+$search_query = isset($_GET['q']) ? $_GET['q'] : '';
+
 // Pagination settings
 $images_per_page = 24;
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $images_per_page;
 
-// Count total images for the user
-$count_stmt = $db->prepare("SELECT COUNT(*) AS total FROM images WHERE user_id = :user_id");
+// Count total images for the user based on search query
+$count_query = "SELECT COUNT(*) AS total FROM images WHERE user_id = :user_id";
+if ($search_query) {
+  $count_query .= " AND (filename LIKE :search_query OR uniqid LIKE :search_query)";
+}
+$count_stmt = $db->prepare($count_query);
 $count_stmt->bindValue(':user_id', $user_id, SQLITE3_INTEGER);
+if ($search_query) {
+  $count_stmt->bindValue(':search_query', '%' . $search_query . '%', SQLITE3_TEXT);
+}
 $count_result = $count_stmt->execute();
 $total_images = $count_result->fetchArray(SQLITE3_ASSOC)['total'];
 $total_pages = ceil($total_images / $images_per_page);
 
-// Fetch images for the current page
-$stmt = $db->prepare("SELECT * FROM images WHERE user_id = :user_id ORDER BY filename DESC LIMIT :limit OFFSET :offset");
+// Fetch images for the current page based on search query
+$image_query = "SELECT * FROM images WHERE user_id = :user_id";
+if ($search_query) {
+  $image_query .= " AND (filename LIKE :search_query OR uniqid LIKE :search_query)";
+}
+$image_query .= " ORDER BY filename DESC LIMIT :limit OFFSET :offset";
+$stmt = $db->prepare($image_query);
 $stmt->bindValue(':user_id', $user_id, SQLITE3_INTEGER);
+if ($search_query) {
+  $stmt->bindValue(':search_query', '%' . $search_query . '%', SQLITE3_TEXT);
+}
 $stmt->bindValue(':limit', $images_per_page, SQLITE3_INTEGER);
 $stmt->bindValue(':offset', $offset, SQLITE3_INTEGER);
 $result = $stmt->execute();
@@ -84,19 +102,27 @@ $result = $stmt->execute();
       </div>
     </nav>
     <div class="container my-5">
+      <!-- Search Form -->
+      <form method="get" class="mb-4">
+        <div class="input-group">
+          <input type="text" name="q" class="form-control" placeholder="Search by filename or uniqid" value="<?php echo htmlspecialchars($search_query); ?>">
+          <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+      </form>
+
       <div class="row row-cols-2 row-cols-md-6 g-2">
         <?php while ($row = $result->fetchArray(SQLITE3_ASSOC)): ?>
           <div class="col">
             <div class="position-relative">
               <a class="ratio ratio-1x1" href="view.php?id=<?php echo $row['uniqid']; ?>">
-                <img src="/thumbnails/<?php echo $row['filename']; ?>" class="w-100 rounded object-fit-cover" alt="<?php echo htmlspecialchars($row['filename']); ?>">
+                <img src="thumbnails/<?php echo $row['filename']; ?>" class="w-100 rounded object-fit-cover" alt="<?php echo htmlspecialchars($row['filename']); ?>">
               </a>
               <div class="dropdown position-absolute top-0 end-0">
                 <button class="btn border-0" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                   <i class="bi bi-three-dots-vertical text-white fs-5" style="text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4), 2px 2px 4px rgba(0, 0, 0, 0.3), 3px 3px 6px rgba(0, 0, 0, 0.2);"></i>
                 </button>
                 <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="/original/<?php echo $row['filename']; ?>" download>download</a></li>
+                  <li><a class="dropdown-item" href="original/<?php echo $row['filename']; ?>" download>download</a></li>
                   <li><a class="dropdown-item" href="?delete_id=<?php echo $row['uniqid']; ?>" onclick="return confirm('Are you sure you want to delete this image?');">delete</a></li>
                 </ul>
               </div>
@@ -108,17 +134,17 @@ $result = $stmt->execute();
       <nav aria-label="Page navigation">
         <ul class="pagination justify-content-center mt-4">
           <li class="page-item <?php if ($page <= 1) echo 'disabled'; ?>">
-            <a class="page-link" href="?page=<?php echo max($page - 1, 1); ?>" aria-label="Previous">
+            <a class="page-link" href="?page=<?php echo max($page - 1, 1); ?>&q=<?php echo urlencode($search_query); ?>" aria-label="Previous">
               <span aria-hidden="true">&laquo;</span>
             </a>
           </li>
           <?php for ($i = 1; $i <= $total_pages; $i++): ?>
             <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
-              <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+              <a class="page-link" href="?page=<?php echo $i; ?>&q=<?php echo urlencode($search_query); ?>"><?php echo $i; ?></a>
             </li>
           <?php endfor; ?>
           <li class="page-item <?php if ($page >= $total_pages) echo 'disabled'; ?>">
-            <a class="page-link" href="?page=<?php echo min($page + 1, $total_pages); ?>" aria-label="Next">
+            <a class="page-link" href="?page=<?php echo min($page + 1, $total_pages); ?>&q=<?php echo urlencode($search_query); ?>" aria-label="Next">
               <span aria-hidden="true">&raquo;</span>
             </a>
           </li>
