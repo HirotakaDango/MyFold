@@ -1,7 +1,3 @@
-Sure, here’s a cool explanation about MyFold based on the provided `index.php` code:
-
----
-
 ## Welcome to **MyFold**!
 
 ### Your Personal Image Hub
